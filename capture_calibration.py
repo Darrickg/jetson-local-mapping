@@ -69,6 +69,8 @@ class CaptureSubscriberNode(Node):
                 raise SystemExit
             
             if self.latest_img is None or self.latest_lidar is None:
+                self.get_logger().warn(f'latest.img = {self.latest_img}')
+                self.get_logger().warn(f'latest_lidar = {self.latest_lidar}')
                 self.get_logger().warn('No data yet, wait...')
                 continue
 
