@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2, Image
 from cv_bridge import CvBridge
 import message_filters
@@ -17,17 +18,31 @@ class CaptureSubscriberNode(Node):
         self.count = 0
         self.latest_img = None
         self.latest_lidar = None
-        self.img_subscriber = message_filters.Subscriber(self, Image, '/zed/left/image_rect_color')
-        self.lidar_subscriber = message_filters.Subscriber(self, PointCloud2, '/rslidar_points')
+
+        self.img_subscriber = message_filters.Subscriber(
+            self,
+            Image,
+            '/zed/zed_node/rgb/color/rect/image',
+            qos_profile=qos_profile_sensor_data
+        )
+
+        self.lidar_subscriber = message_filters.Subscriber(
+            self,
+            PointCloud2,
+            '/rslidar_points',
+            qos_profile=qos_profile_sensor_data
+        )
 
         os.makedirs('calibration_data', exist_ok=True)
         os.makedirs('calibration_data/images', exist_ok=True)
         os.makedirs('calibration_data/pointclouds', exist_ok=True)
 
-        sync = message_filters.ApproximateTimeSynchronizer(
-            [self.img_subscriber, self.lidar_subscriber], queue_size=10, slop=0.1
+        self.sync = message_filters.ApproximateTimeSynchronizer(
+            [self.img_subscriber, self.lidar_subscriber],
+            queue_size=30,
+            slop=1.0
         )
-        sync.registerCallback(self.callback)
+        self.sync.registerCallback(self.callback)
 
         thread = threading.Thread(target=self.keyboard, daemon=True)
         thread.start()
@@ -36,7 +51,8 @@ class CaptureSubscriberNode(Node):
     def callback(self, img_msg, lidar_msg):
         self.latest_img = img_msg
         self.latest_lidar = lidar_msg
-    
+        self.get_logger().info('Synced pair received')
+
     def save_pcd(self, msg, filename):
         points = []
         point_step = msg.point_step
@@ -67,9 +83,9 @@ class CaptureSubscriberNode(Node):
             key = input()
             if key == 'q':
                 raise SystemExit
-            
+
             if self.latest_img is None or self.latest_lidar is None:
-                self.get_logger().warn(f'latest.img = {self.latest_img}')
+                self.get_logger().warn(f'latest_img = {self.latest_img}')
                 self.get_logger().warn(f'latest_lidar = {self.latest_lidar}')
                 self.get_logger().warn('No data yet, wait...')
                 continue
@@ -77,11 +93,9 @@ class CaptureSubscriberNode(Node):
             self.count += 1
             label = f'{self.count:03d}'
 
-            # Save image as PNG
             cv_img = self.bridge.imgmsg_to_cv2(self.latest_img, 'bgr8')
             cv2.imwrite(f'calibration_data/images/img_{label}.png', cv_img)
 
-            # Save point cloud data from LiDAR
             self.save_pcd(self.latest_lidar, f'calibration_data/pointclouds/pc_{label}.pcd')
 
             self.get_logger().info(f'Captured {self.count}')
@@ -89,15 +103,13 @@ class CaptureSubscriberNode(Node):
 
 def main():
     rclpy.init()
-
     node = CaptureSubscriberNode()
-
     try:
         rclpy.spin(node)
     except SystemExit:
         pass
-
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
