@@ -8,8 +8,6 @@ import cv2
 import os
 import struct
 import threading
-from sensor_msgs_py import point_cloud2
-import math
 
 
 class CaptureSubscriberNode(Node):
@@ -42,13 +40,13 @@ class CaptureSubscriberNode(Node):
         self.sync = message_filters.ApproximateTimeSynchronizer(
             [self.img_subscriber, self.lidar_subscriber],
             queue_size=30,
-            slop=0.05
+            slop=1
         )
         self.sync.registerCallback(self.callback)
 
         thread = threading.Thread(target=self.keyboard, daemon=True)
         thread.start()
-        self.get_logger().info('Ready. Press Enter to capture, q to quit.')
+        self.get_logger().info('Press Enter to capture, q to quit.')
 
     def callback(self, img_msg, lidar_msg):
         self.latest_img = img_msg
@@ -57,31 +55,30 @@ class CaptureSubscriberNode(Node):
 
     def save_pcd(self, msg, filename):
         points = []
+        point_step = msg.point_step
+        for i in range(msg.width * msg.height):
+            offset = i * point_step
+            x = struct.unpack_from('f', msg.data, offset)[0]
+            y = struct.unpack_from('f', msg.data, offset + 4)[0]
+            z = struct.unpack_from('f', msg.data, offset + 8)[0]
+            intensity = struct.unpack_from('f', msg.data, offset + 12)[0]
 
-        for p in point_cloud2.read_points(
-            msg,
-            field_names=("x", "y", "z"),
-            skip_nans=True
-        ):
-            x, y, z = p
+            if not (x == 0 and y == 0 and z == 0):
+                points.append((x, y, z, intensity))
 
-            if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
-                points.append((x, y, z))
-
-        with open(filename, "w") as f:
-            f.write("VERSION .7\n")
-            f.write("FIELDS x y z\n")
-            f.write("SIZE 4 4 4\n")
-            f.write("TYPE F F F\n")
-            f.write("COUNT 1 1 1\n")
-            f.write(f"WIDTH {len(points)}\n")
-            f.write("HEIGHT 1\n")
-            f.write("VIEWPOINT 0 0 0 1 0 0 0\n")
-            f.write(f"POINTS {len(points)}\n")
-            f.write("DATA ascii\n")
-
-            for x, y, z in points:
-                f.write(f"{x} {y} {z}\n")
+        with open(filename, 'w') as f:
+            f.write('VERSION .7\n')
+            f.write('FIELDS x y z intensity\n')
+            f.write('SIZE 4 4 4 4\n')
+            f.write('TYPE F F F F\n')
+            f.write('COUNT 1 1 1 1\n')
+            f.write(f'WIDTH {len(points)}\n')
+            f.write('HEIGHT 1\n')
+            f.write('VIEWPOINT 0 0 0 1 0 0 0\n')
+            f.write(f'POINTS {len(points)}\n')
+            f.write('DATA ascii\n')
+            for p in points:
+                f.write(f'{p[0]} {p[1]} {p[2]} {p[3]}\n')
 
     def keyboard(self):
         while True:
