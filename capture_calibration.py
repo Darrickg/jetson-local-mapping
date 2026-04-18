@@ -22,7 +22,7 @@ class CaptureSubscriberNode(Node):
         self.img_subscriber = message_filters.Subscriber(
             self,
             Image,
-            '/zed/zed_node/rgb/color/rect/image',
+            '/zed/zed_node/rgb/color/raw/image',
             qos_profile=qos_profile_sensor_data
         )
 
@@ -40,7 +40,7 @@ class CaptureSubscriberNode(Node):
         self.sync = message_filters.ApproximateTimeSynchronizer(
             [self.img_subscriber, self.lidar_subscriber],
             queue_size=30,
-            slop=1
+            slop=0.06
         )
         self.sync.registerCallback(self.callback)
 
@@ -52,6 +52,11 @@ class CaptureSubscriberNode(Node):
         self.latest_img = img_msg
         self.latest_lidar = lidar_msg
         self.get_logger().info('Synced pair received')
+        img_t = img_msg.header.stamp.sec + img_msg.header.stamp.nanosec * 1e-9
+        lid_t = lidar_msg.header.stamp.sec + lidar_msg.header.stamp.nanosec * 1e-9
+        self.get_logger().info(f'Sync diff: {abs(img_t - lid_t)*1000:.1f} ms')
+        self.latest_img = img_msg
+        self.latest_lidar = lidar_msg
 
     def save_pcd(self, msg, filename):
         points = []
