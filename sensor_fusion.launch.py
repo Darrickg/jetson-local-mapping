@@ -13,8 +13,8 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='rslidar_to_zed_tf',
         arguments=[
-            '--x', '-0.149685', '--y', '-0.124428', '--z', '0.008628',
-            '--qx', ' 0.330842', '--qy', '-0.317747', '--qz', '0.634132', '--qw', '0.622461',
+            '--x', '0.050004', '--y', '-0.204872', '--z', '-0.065184',
+            '--qx', '0.330842', '--qy', '-0.317747', '--qz', '0.634132', '--qw', '0.622461',
             '--frame-id', 'zed_left_camera_frame_optical',
             '--child-frame-id', 'rslidar',
         ]
