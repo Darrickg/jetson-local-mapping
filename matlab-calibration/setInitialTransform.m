@@ -8,4 +8,4 @@ translation = [0.1084, 0.5225, 0];
 
 % 3. Create the rigid transformation object
 % Note: Use rigid3d(theta, translation) if you are on an older MATLAB version
-myInitialGuess = rigidtform3d(theta, translation);
+initialGuess = rigidtform3d(theta, translation);
