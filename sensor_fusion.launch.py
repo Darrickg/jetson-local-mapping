@@ -53,10 +53,17 @@ def generate_launch_description():
         output='screen'
     )
 
+    #5 img_tools node
+    img_tools_launch = Node(
+    	package = 'img_tools',
+    	executable = 'undistort_image',
+    	output = 'screen'
+    )
     # Return the launch description to execute all nodes simultaneously
     return LaunchDescription([
         static_tf_node,
         zed_launch,
         rslidar_launch,
-        rviz_node
+        rviz_node,
+        img_tools_launch,
     ])
