@@ -1,5 +1,16 @@
-ros2_ws/
+ros2_ws/*
+!ros2_ws/src/
+ros2_ws/src/*
+!ros2_ws/src/img_tools
 build/
 calibration_data/
 install/
 log/
+matlab-calibration/
+*.zip
+.git
+.git-backup
+.camera_capture.py.swn
+.camera_capture.py.swo
+*.pdf
+rosbag*

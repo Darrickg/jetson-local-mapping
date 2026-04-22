@@ -40,8 +40,7 @@ class CaptureSubscriberNode(Node):
         self.sync = message_filters.ApproximateTimeSynchronizer(
             [self.img_subscriber, self.lidar_subscriber],
             queue_size=30,
-            slop=0.06
-        )
+            slop= 10)
         self.sync.registerCallback(self.callback)
 
         thread = threading.Thread(target=self.keyboard, daemon=True)
