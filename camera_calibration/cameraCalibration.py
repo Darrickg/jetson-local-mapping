@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 def calibrate(showPics = True):
   # Read Image
   root = os.getcwd()
-  calibrationDir = os.path.join(root, 'calibration_data/images')
+  calibrationDir = os.path.join(root, 'camera_calibration/calibration_data/images')
   imgPathList = glob.glob(os.path.join(calibrationDir, '*.png'))
 
   # Initialize
@@ -21,6 +21,9 @@ def calibrate(showPics = True):
   worldPtsList = []
   imgPtsList = []
 
+  i = 1
+  save_dir = os.path.join(root, 'camera_calibration/calibration_data/chessboard_images')
+  os.makedirs(save_dir, exist_ok=True)
   # Find Corners
   for imgPath in imgPathList:
     imgBGR = cv.imread(imgPath)
@@ -33,9 +36,13 @@ def calibrate(showPics = True):
       imgPtsList.append(cornersRefined)
 
       if showPics:
+        save_path = os.path.join(save_dir, f'chessboard_{i}.png')
         cv.drawChessboardCorners(imgBGR, (Cols, Rows), cornersRefined, ret)
         cv.imshow('Chessboard', imgBGR)
+        save_path = os.path.join(save_dir, f'chessboard_{i}.png')
+        cv.imwrite(save_path, imgBGR)
         cv.waitKey(500)
+        i += 1
   cv.destroyAllWindows()
 
   # Calibrate
@@ -46,7 +53,7 @@ def calibrate(showPics = True):
 
   # save calibration parameters
   curFolder = os.path.dirname(os.path.abspath(__file__))
-  paramPath = os.path.join(curFolder, 'calibration_data/calibration_parameters.npz')
+  paramPath = os.path.join(curFolder, 'calibration_parameters.npz')
   np.savez(paramPath,
            repError=repError,
            cameraMatrix=cameraMatrix,
@@ -76,5 +83,5 @@ def runRemoveDistortion():
   removeDistortion(camMatrix, distCoeffs)
 
 if __name__ == "__main__":
-  # runCalibration()
-  runRemoveDistortion()
+  runCalibration()
+#   runRemoveDistortion()
