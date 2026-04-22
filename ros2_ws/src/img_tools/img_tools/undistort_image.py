@@ -6,7 +6,8 @@ from rclpy.node import Node
 
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
-
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class ZedUndistortCropNode(Node):
     def __init__(self):
@@ -38,6 +39,24 @@ class ZedUndistortCropNode(Node):
             [-0.02675044, 0.15411475, -0.00074599, -0.00087969, -0.36664865],
             dtype=np.float64
         )
+
+    # Try loading from .npz
+    try:
+        pkg_path = get_package_share_directory('img_tools')
+        calib_path = os.path.join(pkg_path, 'calibration', 'calibration_parameters.npz')
+
+        if os.path.exists(calib_path):
+            data = np.load(calib_path)
+
+            self.camera_matrix = data['cameraMatrix']
+            self.dist_coeffs = data['distCoeffs']
+
+            self.get_logger().info(f'Loaded calibration from: {calib_path}')
+        else:
+            self.get_logger().warn(f'Calibration file not found, using defaults: {calib_path}')
+
+    except Exception as e:
+        self.get_logger().warn(f'Failed to load calibration file, using defaults: {e}')
 
         # Cached undistortion state
         self.map1 = None
@@ -218,5 +237,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
