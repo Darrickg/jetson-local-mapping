@@ -1,3 +1,13 @@
+"""
+sensor_fusion.launch.py — Main ROS 2 launch file for the sensor fusion stack.
+
+Starts the static TF publisher (calibrated LiDAR→camera transform), the ZED
+camera wrapper, the Robosense LiDAR node, and RViz2 with a pre-configured view.
+
+Usage:
+    ros2 launch sensor_fusion.launch.py
+"""
+
 import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, ExecuteProcess
@@ -13,8 +23,8 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='rslidar_to_zed_tf',
         arguments=[
-            '--x', '0.058607', '--y', '-0.058351', '--z', '-0.081853',
-            '--qx', '0.366536', '--qy', '-0.374354', '--qz', '0.601807', '--qw', '0.602776',
+            '--x', '0.050004', '--y', '-0.204872', '--z', '-0.065184',
+            '--qx', '0.330842', '--qy', '-0.317747', '--qz', '0.634132', '--qw', '0.622461',
             '--frame-id', 'zed_left_camera_frame_optical',
             '--child-frame-id', 'rslidar',
         ]
@@ -53,17 +63,10 @@ def generate_launch_description():
         output='screen'
     )
 
-    #5 img_tools node
-    img_tools_launch = Node(
-    	package = 'img_tools',
-    	executable = 'undistort_image',
-    	output = 'screen'
-    )
     # Return the launch description to execute all nodes simultaneously
     return LaunchDescription([
         static_tf_node,
         zed_launch,
         rslidar_launch,
-        rviz_node,
-        img_tools_launch,
+        rviz_node
     ])

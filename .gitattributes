@@ -1,0 +1,7 @@
+sample_rosbag.db3 filter=lfs diff=lfs merge=lfs -text
+*.stl filter=lfs diff=lfs merge=lfs -text
+ filter=lfs diff=lfs merge=lfs -text
+sample_rosbag/sample_rosbag.db3 filter=lfs diff=lfs merge=lfs -text
+*.db3 filter=lfs diff=lfs merge=lfs -text
+*.db3* filter=lfs diff=lfs merge=lfs -text
+*.stl* filter=lfs diff=lfs merge=lfs -text
