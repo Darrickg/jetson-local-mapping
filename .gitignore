@@ -3,7 +3,8 @@ ros2_ws/*
 ros2_ws/src/*
 !ros2_ws/src/img_tools
 build/
-calibration_data/
+camera_calibration/calibration_data/chessboard_images
+camera_calibration/calibration_data/images
 install/
 log/
 matlab-calibration/
@@ -14,6 +15,4 @@ matlab-calibration/
 .camera_capture.py.swo
 *.pdf
 rosbag*
-*.db3
-*.stl
-sample_rosbag/sample_rosbag.db3
+venv/

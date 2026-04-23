@@ -1,8 +1,10 @@
+import os
 import numpy as np
 import cv2 as cv
 
 import rclpy
 from rclpy.node import Node
+from ament_index_python.packages import get_package_share_directory
 
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
@@ -12,76 +14,103 @@ class ZedUndistortCropNode(Node):
     def __init__(self):
         super().__init__('zed_undistort_crop_node')
 
-        # Topics
         self.declare_parameter('input_topic', '/zed/zed_node/rgb/color/raw/image')
-        self.declare_parameter('output_image_topic', '/zed/zed_node/rgb/color/image_rect_color')
-        self.declare_parameter('output_camera_info_topic', '/zed/zed_node/rgb/color/camera_info_rect')
+        self.declare_parameter('output_topic', '/zed/zed_node/rgb/color/undistorted_cropped/image')
+        self.declare_parameter('camera_info_topic', '/zed/zed_node/rgb/color/undistorted_cropped/camera_info')
 
-        # Optional extra trim after ROI crop, in pixels
-        self.declare_parameter('extra_crop_pixels', 0)
+        self.declare_parameter('package_name', 'img_tools')
+        self.declare_parameter('calibration_filename', 'calibration_parameters.npz')
+
+        self.declare_parameter('crop_x', 0)
+        self.declare_parameter('crop_y', 0)
+        self.declare_parameter('crop_width', -1)
+        self.declare_parameter('crop_height', -1)
 
         input_topic = self.get_parameter('input_topic').get_parameter_value().string_value
-        output_image_topic = self.get_parameter('output_image_topic').get_parameter_value().string_value
-        output_camera_info_topic = self.get_parameter('output_camera_info_topic').get_parameter_value().string_value
-        self.extra_crop_pixels = self.get_parameter('extra_crop_pixels').get_parameter_value().integer_value
+        output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
+        camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+
+        package_name = self.get_parameter('package_name').get_parameter_value().string_value
+        calibration_filename = self.get_parameter('calibration_filename').get_parameter_value().string_value
+
+        self.crop_x = self.get_parameter('crop_x').get_parameter_value().integer_value
+        self.crop_y = self.get_parameter('crop_y').get_parameter_value().integer_value
+        self.crop_width = self.get_parameter('crop_width').get_parameter_value().integer_value
+        self.crop_height = self.get_parameter('crop_height').get_parameter_value().integer_value
 
         self.bridge = CvBridge()
 
-        # Original calibration
-        self.camera_matrix = np.array([
-            [1416.95644,    0.0,       942.508882],
-            [   0.0,     1420.40169,   536.529123],
-            [   0.0,        0.0,         1.0]
-        ], dtype=np.float64)
+        self.camera_matrix, self.dist_coeffs = self.load_calibration(package_name, calibration_filename)
 
-        self.dist_coeffs = np.array(
-            [-0.02675044, 0.15411475, -0.00074599, -0.00087969, -0.36664865],
-            dtype=np.float64
-        )
-
-        # Cached undistortion state
         self.map1 = None
         self.map2 = None
         self.cached_size = None
-        self.new_camera_matrix = None
-        self.valid_roi = None
 
-        # ROS interfaces
-        self.image_sub = self.create_subscription(
+        self.new_camera_matrix = None
+        self.undistort_roi = None
+
+        self.sub = self.create_subscription(
             Image,
             input_topic,
             self.image_callback,
             10
         )
 
-        self.image_pub = self.create_publisher(
-            Image,
-            output_image_topic,
-            10
+        self.image_pub = self.create_publisher(Image, output_topic, 10)
+        self.camera_info_pub = self.create_publisher(CameraInfo, camera_info_topic, 10)
+
+    def load_calibration(self, package_name, calibration_filename):
+        default_camera_matrix = np.array([
+            [1416.95644, 0.0, 942.508882],
+            [0.0, 1420.40169, 536.529123],
+            [0.0, 0.0, 1.0]
+        ], dtype=np.float64)
+
+        default_dist_coeffs = np.array(
+            [-0.02675044, 0.15411475, -0.00074599, -0.00087969, -0.36664865],
+            dtype=np.float64
         )
 
-        self.camera_info_pub = self.create_publisher(
-            CameraInfo,
-            output_camera_info_topic,
-            10
-        )
+        try:
+            pkg_share = get_package_share_directory(package_name)
+            calib_path = os.path.join(pkg_share, 'calibration', calibration_filename)
 
-        self.get_logger().info(f'Subscribing to: {input_topic}')
-        self.get_logger().info(f'Publishing image to: {output_image_topic}')
-        self.get_logger().info(f'Publishing camera_info to: {output_camera_info_topic}')
-        self.get_logger().info(f'Extra crop pixels: {self.extra_crop_pixels}')
-        self.get_logger().info(f'Camera matrix:\n{self.camera_matrix}')
-        self.get_logger().info(f'Dist coeffs: {self.dist_coeffs.ravel()}')
+            data = np.load(calib_path)
+
+            if 'cameraMatrix' in data:
+                camera_matrix = data['cameraMatrix']
+            elif 'camera_matrix' in data:
+                camera_matrix = data['camera_matrix']
+            else:
+                raise KeyError('cameraMatrix not found in npz')
+
+            if 'distCoeffs' in data:
+                dist_coeffs = data['distCoeffs']
+            elif 'dist_coeffs' in data:
+                dist_coeffs = data['dist_coeffs']
+            else:
+                raise KeyError('distCoeffs not found in npz')
+
+            camera_matrix = np.array(camera_matrix, dtype=np.float64)
+            dist_coeffs = np.array(dist_coeffs, dtype=np.float64).reshape(-1)
+
+            self.get_logger().info(f'Loaded calibration from: {calib_path}')
+            return camera_matrix, dist_coeffs
+
+        except Exception as e:
+            self.get_logger().warning(
+                f'Failed to load calibration file, using defaults: {e}'
+            )
+            return default_camera_matrix, default_dist_coeffs
 
     def build_undistort_maps(self, width, height):
         image_size = (width, height)
 
-        # alpha=0 => minimize black/invalid border pixels
         new_camera_matrix, roi = cv.getOptimalNewCameraMatrix(
             self.camera_matrix,
             self.dist_coeffs,
             image_size,
-            0,
+            0,   # alpha=0 removes border area as much as possible
             image_size
         )
 
@@ -98,53 +127,53 @@ class ZedUndistortCropNode(Node):
         self.map2 = map2
         self.cached_size = image_size
         self.new_camera_matrix = new_camera_matrix
-        self.valid_roi = roi
-
-        self.get_logger().info(
-            f'Updated undistort maps for size {width}x{height}, ROI={roi}'
-        )
+        self.undistort_roi = roi
 
     def undistort_image(self, img):
         height, width = img.shape[:2]
 
-        if self.cached_size != (width, height) or self.map1 is None or self.map2 is None:
+        if self.cached_size != (width, height) or self.map1 is None:
             self.build_undistort_maps(width, height)
 
-        undistorted = cv.remap(img, self.map1, self.map2, interpolation=cv.INTER_LINEAR)
-        return undistorted
+        return cv.remap(img, self.map1, self.map2, interpolation=cv.INTER_LINEAR)
 
-    def crop_to_valid_roi(self, img):
-        if self.valid_roi is None:
+    def crop_valid_roi(self, img):
+        if self.undistort_roi is None:
             return img, 0, 0
 
-        x, y, w, h = self.valid_roi
+        x, y, w, h = self.undistort_roi
+
         if w <= 0 or h <= 0:
             return img, 0, 0
 
-        # Optional extra trim for any tiny interpolation slivers
-        pad = max(0, int(self.extra_crop_pixels))
+        return img[y:y + h, x:x + w], x, y
 
-        x1 = x + pad
-        y1 = y + pad
-        x2 = x + w - pad
-        y2 = y + h - pad
+    def crop_image(self, img):
+        h, w = img.shape[:2]
 
-        img_h, img_w = img.shape[:2]
-        x1 = max(0, min(x1, img_w - 1))
-        y1 = max(0, min(y1, img_h - 1))
-        x2 = max(x1 + 1, min(x2, img_w))
-        y2 = max(y1 + 1, min(y2, img_h))
+        x = self.crop_x
+        y = self.crop_y
+        crop_w = self.crop_width
+        crop_h = self.crop_height
 
-        cropped = img[y1:y2, x1:x2]
-        return cropped, x1, y1
+        if crop_w == -1:
+            crop_w = w - x
+        if crop_h == -1:
+            crop_h = h - y
+
+        x = max(0, min(x, w - 1))
+        y = max(0, min(y, h - 1))
+        crop_w = max(1, min(crop_w, w - x))
+        crop_h = max(1, min(crop_h, h - y))
+
+        return img[y:y + crop_h, x:x + crop_w], x, y
 
     def make_camera_info_msg(self, header, out_width, out_height, crop_x, crop_y):
         cam_info = CameraInfo()
         cam_info.header = header
-        cam_info.width = int(out_width)
-        cam_info.height = int(out_height)
+        cam_info.width = out_width
+        cam_info.height = out_height
 
-        # Rectified / undistorted output
         cam_info.distortion_model = 'plumb_bob'
         cam_info.d = [0.0, 0.0, 0.0, 0.0, 0.0]
 
@@ -153,9 +182,8 @@ class ZedUndistortCropNode(Node):
         cx = float(self.new_camera_matrix[0, 2])
         cy = float(self.new_camera_matrix[1, 2])
 
-        # Cropping shifts the principal point
-        cx_cropped = cx - float(crop_x)
-        cy_cropped = cy - float(crop_y)
+        cx_cropped = cx - crop_x
+        cy_cropped = cy - crop_y
 
         cam_info.k = [
             fx, 0.0, cx_cropped,
@@ -179,26 +207,25 @@ class ZedUndistortCropNode(Node):
 
     def image_callback(self, msg: Image):
         try:
-            # Convert ROS Image -> OpenCV color image
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
-            # Undistort
             undistorted = self.undistort_image(cv_image)
 
-            # Auto-crop using the valid ROI from OpenCV
-            cropped, crop_x, crop_y = self.crop_to_valid_roi(undistorted)
+            roi_cropped, roi_x, roi_y = self.crop_valid_roi(undistorted)
+            cropped, user_x, user_y = self.crop_image(roi_cropped)
 
-            # Convert back to ROS Image
+            total_crop_x = roi_x + user_x
+            total_crop_y = roi_y + user_y
+
             out_msg = self.bridge.cv2_to_imgmsg(cropped, encoding='bgr8')
             out_msg.header = msg.header
 
-            # Matching camera info for RViz Camera display
             cam_info_msg = self.make_camera_info_msg(
                 header=msg.header,
                 out_width=cropped.shape[1],
                 out_height=cropped.shape[0],
-                crop_x=crop_x,
-                crop_y=crop_y
+                crop_x=total_crop_x,
+                crop_y=total_crop_y
             )
 
             self.image_pub.publish(out_msg)
@@ -218,5 +245,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
