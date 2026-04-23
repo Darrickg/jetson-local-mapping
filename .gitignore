@@ -4,7 +4,7 @@ ros2_ws/src/*
 !ros2_ws/src/img_tools
 build/
 camera_calibration/calibration_data/chessboard_images
-camera_calibration/calibration_data/images
+camera_calibration/calibration_data/images/img*
 install/
 log/
 matlab-calibration/
