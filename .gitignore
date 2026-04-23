@@ -14,5 +14,6 @@ matlab-calibration/
 .camera_capture.py.swn
 .camera_capture.py.swo
 *.pdf
-rosbag*
+.db3*
+.stl*
 venv/
