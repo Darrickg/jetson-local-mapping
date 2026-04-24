@@ -13,6 +13,7 @@ Uses a **Robosense AIRY 3D LiDAR** and a **ZED stereo camera** mounted on a **Tu
 - [Repository Setup](#repository-setup)
 - [Calibration Workflow](#calibration-workflow)
 - [Running the Sensor Fusion Stack](#running-the-sensor-fusion-stack)
+- [Teleoperation](#teleoperation)
 - [Recording and Playing Back Datasets](#recording-and-playing-back-datasets)
 - [Visualization](#visualization)
 - [Project Structure](#project-structure)
@@ -266,6 +267,144 @@ ros2 run img_tools undistort_image \
   -p crop_y:=100 \
   -p crop_width:=1920 \
   -p crop_height:=1080
+```
+
+---
+
+## Teleoperation
+
+This project uses controller teleop to drive the Turtlebot2/Kobuki base. Teleop only publishes velocity commands; it does not directly drive the motors. The Kobuki base driver must be installed, built, and running before the robot will move.
+
+### One-time Kobuki workspace setup
+
+If `~/kobuki_ws` has not been set up yet, create a separate workspace for the Turtlebot2/Kobuki ROS 2 packages:
+
+```bash
+mkdir -p ~/kobuki_ws/src
+cd ~/kobuki_ws/src
+git clone https://github.com/idorobotics/turtlebot2_ros2.git
+cd turtlebot2_ros2
+git submodule update --init --recursive
+```
+
+Install the required ROS packages:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  ros-humble-kobuki-velocity-smoother \
+  ros-humble-sophus \
+  ros-humble-teleop-twist-keyboard \
+  ros-humble-joy-teleop \
+  ros-humble-teleop-twist-joy
+```
+
+Install remaining dependencies and build the workspace:
+
+```bash
+cd ~/kobuki_ws
+rosdep install -i --from-path src --rosdistro humble -y
+colcon build --symlink-install --executor sequential
+source ~/kobuki_ws/install/setup.bash
+```
+
+If `source ~/kobuki_ws/install/setup.bash` gives an error about a missing package setup file, rebuild the workspace after installing dependencies.
+
+### Start the Kobuki base
+
+Open a terminal:
+
+```bash
+source ~/kobuki_ws/install/setup.bash
+ros2 launch kobuki_node kobuki_node-launch.py
+```
+
+Leave this terminal running. This starts the robot base driver. Without this, teleop may publish commands, but the robot will not move.
+
+### Run controller teleop
+
+Open a second terminal:
+
+```bash
+source ~/kobuki_ws/install/setup.bash
+ros2 launch teleop_twist_joy teleop-launch.py \
+  config_filepath:=$HOME/jetson-local-mapping/teleop/my_controller.config.yaml \
+  joy_vel:=commands/velocity
+```
+
+This uses the custom controller config in `teleop/my_controller.config.yaml` and remaps the controller output to `commands/velocity`, which is the command topic used by the Kobuki/Turtlebot2 setup.
+
+### Verify velocity commands
+
+Open a third terminal:
+
+```bash
+source ~/kobuki_ws/install/setup.bash
+ros2 topic echo /commands/velocity
+```
+
+Move the controller sticks. If messages appear on `/commands/velocity`, teleop is publishing correctly.
+
+### Optional keyboard teleop
+
+Keyboard teleop can also be used for quick testing:
+
+```bash
+source ~/kobuki_ws/install/setup.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=commands/velocity
+```
+
+### Changing buttons, speed, or turn speed
+
+Edit the controller config:
+
+```bash
+nano ~/jetson-local-mapping/teleop/my_controller.config.yaml
+```
+
+Common values to change:
+
+```yaml
+require_enable_button: false   # true = hold a button to move, false = sticks always active
+enable_button: 0               # button used when require_enable_button is true
+enable_turbo_button: 5         # button for turbo mode
+
+axis_linear.x: 1               # forward/backward stick axis
+scale_linear.x: 0.4            # normal forward/backward speed
+scale_linear_turbo.x: 0.8      # turbo forward/backward speed
+
+axis_angular.yaw: 0            # turning stick axis
+scale_angular.yaw: 0.5         # normal turn speed
+scale_angular_turbo.yaw: 1.0   # turbo turn speed
+```
+
+To find the correct button or axis number, inspect raw controller input:
+
+```bash
+source ~/kobuki_ws/install/setup.bash
+ros2 topic echo /joy
+```
+
+Press one button or move one stick at a time, then update the matching value in `my_controller.config.yaml`.
+
+### Quick troubleshooting
+
+If `/joy` does not change, the controller is not being read correctly.
+
+If `/joy` changes but `/commands/velocity` does not, the teleop config or launch command is wrong.
+
+If `/commands/velocity` changes but the robot does not move, the Kobuki base driver is not running, the base is not powered, or the robot is listening on a different command topic.
+
+Check which nodes are running with:
+
+```bash
+ros2 node list
+```
+
+Check the command topic with:
+
+```bash
+ros2 topic info /commands/velocity
 ```
 
 ---
